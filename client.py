@@ -14,9 +14,22 @@ RECV_CERT = 2
 # > Split command line argument
 # > Select encryption and hashing based on input
 
+def validate_certificate(recv_certificate):
+    if not keyutils.verify_certificate(readCertificate("certs/minissl-ca.pem"), recv_certificate):
+        print "Bad Certificate"
+        return 0
+    elif keyutils.read_issuer(recv_certificate) != keyutils.read_issuer(readCertificate("certs/minissl-server.pem")):
+            print "Bad Issuer"
+            return 0
+    else:
+        return 1
+
+
+
 def readCertificate(file_path):
     f = open(file_path)
     cert = f.read()
+    f.close()
     return cert
 
 def initialise(socket):
@@ -25,12 +38,9 @@ def initialise(socket):
     socket.send(initMsg)  # Sending the first message.
     data = socket.recv(2096)
     initResponse = data.split(":")
-    print initResponse[RECV_CERT]
-    compare_cert = readCertificate("certs/minissl-server.pem")
-    if initResponse[RECV_CERT] == compare_cert :
-        print "YAY"
-    else:
-        print "NAY"
+    if validate_certificate(initResponse[RECV_CERT]):
+        print "OK"
+
 
 SERVER = "127.0.0.1"
 print(SERVER)
