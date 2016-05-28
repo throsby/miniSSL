@@ -1,3 +1,7 @@
+# TODO:
+# > CHECK FOR EXPIRY OF CERTIFICATE
+# > GENERATE RSA KEY AND BEGIN ENCRYPTION
+
 import socket
 import threading
 
@@ -11,8 +15,10 @@ RECV_CERT = 2
 
 ###################
 
-# > Split command line argument
-# > Select encryption and hashing based on input
+
+
+
+# THIS HELPER VALIDATES CERTIFICATE #
 
 def validate_certificate(recv_certificate):
     if not keyutils.verify_certificate(readCertificate("certs/minissl-ca.pem"), recv_certificate):
@@ -25,21 +31,37 @@ def validate_certificate(recv_certificate):
         return 1
 
 
-
+# THIS HELPER READS CERTIFICATE FROM FILE #
 def readCertificate(file_path):
     f = open(file_path)
     cert = f.read()
     f.close()
     return cert
 
+
+# THIS HELPER INITIALISES THE CONNECTIONS #
 def initialise(socket):
     initNonce = keyutils.generate_nonce(28)
     initMsg = ("ClientInit:" + str(initNonce) + ":AES-HMAC")
     socket.send(initMsg)  # Sending the first message.
     data = socket.recv(2096)
     initResponse = data.split(":")
-    if validate_certificate(initResponse[RECV_CERT]):
-        print "OK"
+
+    # VALIDATING CERTIFICATE (See helper function above) #
+    if not validate_certificate(initResponse[RECV_CERT]):
+        print "Bad Cert"
+        return
+
+    # DERIVING PUBLIC KEY FROM CERTIFICATE #
+    public_key = keyutils.read_pubkey_from_der(initResponse[RECV_CERT])
+
+    # COMPUTING SECRET #
+    secret = keyutils.generate_random(46)
+
+    # DERIVING KEYS FROM SECRET #
+    session_key_one = keyutils.create_hmac(secret, 0b00000000)
+    session_key_two = keyutils.create_hmac(secret, 0b11111111)
+
 
 
 SERVER = "127.0.0.1"
