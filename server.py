@@ -16,6 +16,11 @@ class Client(threading.Thread):
         self.client_sock = client_socket
         self.addr = address
         self.start()
+	
+	def readCertificate(file_path):
+		f = open(file_path)
+		cert = f.read()
+		return cert
 
     @staticmethod
     def init_connection(self, message_tuple):
@@ -25,6 +30,11 @@ class Client(threading.Thread):
         initNonce = keyutils.generate_nonce(28)
         initMsg = ("ServerInit:" + str(initNonce) + message_tuple[2] + ":CERT" + str(0))
         self.client_sock.send(initMsg)
+
+		#TODO Open certificate file, read in and send to client.
+		#     Verify return certificate.
+
+		
 
 
 
