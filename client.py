@@ -12,6 +12,7 @@ import keyutils
 RECV_HEAD = 0
 RECV_NONCE = 1
 RECV_CERT = 2
+CERT_REQ  = 3
 
 ###################
 
@@ -53,15 +54,21 @@ def initialise(socket):
         return
 
     # DERIVING PUBLIC KEY FROM CERTIFICATE #
-    public_key = keyutils.read_pubkey_from_der(initResponse[RECV_CERT])
+    public_key = keyutils.read_pubkey_from_pem(initResponse[RECV_CERT])
 
     # COMPUTING SECRET #
     secret = keyutils.generate_random(46)
 
     # DERIVING KEYS FROM SECRET #
-    session_key_one = keyutils.create_hmac(secret, 0b00000000)
-    session_key_two = keyutils.create_hmac(secret, 0b11111111)
 
+    session_key_one = keyutils.create_hmac(secret, "00000000")
+    session_key_two = keyutils.create_hmac(secret, "11111111")
+
+    # CHECK IF CERT REQUIRED #
+    if len(initResponse) == 4:
+        if initResponse[3] == "CertReq":
+            msg = "ClientInit:" + initNonce + ":AES-HMAC:"
+            msgHMAC = keyutils.create_hmac(session_key_two,
 
 
 SERVER = "127.0.0.1"
