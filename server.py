@@ -16,25 +16,33 @@ class Client(threading.Thread):
         self.client_sock = client_socket
         self.addr = address
         self.start()
-	
-	def readCertificate(file_path):
-		f = open(file_path)
-		cert = f.read()
-		return cert
+
+    def readCertificate(self, file_path):
+	f = open(file_path)
+	cert = f.read()
+	return cert
 
     @staticmethod
     def init_connection(self, message_tuple):
         print "%s" % message_tuple[0]
         print "%s" % message_tuple[1]
         print "%s" % message_tuple[2]
+        cert = self.readCertificate("certs/minissl-server.pem")
         initNonce = keyutils.generate_nonce(28)
-        initMsg = ("ServerInit:" + str(initNonce) + message_tuple[2] + ":CERT" + str(0))
+        reqClientCert = raw_input("Would You Like A Client's Certificate? (Y/N): ")
+
+        if reqClientCert == 'Y':
+            reqClientCert = ":CertReq"
+        else :
+            reqClientCert = ""
+
+        initMsg = ("ServerInit:" + str(initNonce) + message_tuple[2] + ":" + cert + str(reqClientCert))
         self.client_sock.send(initMsg)
 
 		#TODO Open certificate file, read in and send to client.
 		#     Verify return certificate.
 
-		
+
 
 
 
