@@ -4,6 +4,7 @@
 
 import socket
 import threading
+import binascii
 
 import keyutils
 
@@ -11,8 +12,8 @@ import keyutils
 
 RECV_HEAD = 0
 RECV_NONCE = 1
-RECV_CERT = 2
-CERT_REQ  = 3
+RECV_CERT = 3
+CERT_REQ  = 4
 
 ###################
 
@@ -53,22 +54,31 @@ def initialise(socket):
         print "Bad Cert"
         return
 
-    # DERIVING PUBLIC KEY FROM CERTIFICATE #
+    # DERIVING PUBLIC KEY FROM CERTIFICATE + PRIVATE KEY#
     public_key = keyutils.read_pubkey_from_pem(initResponse[RECV_CERT])
+    private_key = keyutils.read_privkey_from_pem(readCertificate("certs/minissl-client.key.pem"))
 
     # COMPUTING SECRET #
     secret = keyutils.generate_random(46)
+    print secret
 
     # DERIVING KEYS FROM SECRET #
 
-    session_key_one = keyutils.create_hmac(secret, "00000000")
-    session_key_two = keyutils.create_hmac(secret, "11111111")
+    session_key_one = keyutils.create_hmac(secret, initResponse[RECV_NONCE]+ initNonce + '00000000')
+    session_key_two = keyutils.create_hmac(secret, initResponse[RECV_NONCE] + initNonce + '11111111')
 
-    # CHECK IF CERT REQUIRED #
-    if len(initResponse) == 4:
-        if initResponse[3] == "CertReq":
-            msg = "ClientInit:" + initNonce + ":AES-HMAC:"
-            msgHMAC = keyutils.create_hmac(session_key_two,
+    msgHMAC = keyutils.create_hmac(session_key_two, initMsg + data)
+    print keyutils.encrypt_with_rsa_hybrid(secret, public_key)[0]
+    confirm_msg = "ClientKex:" + keyutils.encrypt_with_rsa_hybrid(secret, public_key)[0] + ":" + msgHMAC
+    # IF CERTIFICATE REQUIRED THEN SEND IT
+    if len(initResponse) == 5:
+        if initResponse[CERT_REQ] == "CertReq":
+            print "ADDING CERTIFICATE"
+            signedNonse = private_key.sign(initResponse[RECV_NONCE], private_key)
+            confirm_msg = confirm_msg + ":" + readCertificate("certs/minissl-client.pem") + ":" + str(signedNonse[0])
+
+    socket.send(confirm_msg)
+
 
 
 SERVER = "127.0.0.1"

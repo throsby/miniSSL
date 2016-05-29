@@ -7,6 +7,7 @@ import threading
 
 import keyutils
 
+RECV_CERT = 3
 
 class Client(threading.Thread):
     def __init__(self, server_socket, client_socket, address):
@@ -17,17 +18,26 @@ class Client(threading.Thread):
         self.addr = address
         self.start()
 
+# THIS HELPER VALIDATES CERTIFICATE #
+
+    def validate_certificate(self,recv_certificate):
+        if not keyutils.verify_certificate(self.readCertificate("certs/minissl-ca.pem"), recv_certificate):
+            print "Bad Certificate"
+            return 0
+        else:
+            return 1
+
+
     def readCertificate(self, file_path):
 	f = open(file_path)
 	cert = f.read()
+        f.close()
 	return cert
 
     @staticmethod
     def init_connection(self, message_tuple):
-        print "%s" % message_tuple[0]
-        print "%s" % message_tuple[1]
-        print "%s" % message_tuple[2]
         cert = self.readCertificate("certs/minissl-server.pem")
+        clientNonce = message_tuple[1]
         initNonce = keyutils.generate_nonce(28)
         reqClientCert = raw_input("Would You Like A Client's Certificate? (Y/N): ")
 
@@ -36,12 +46,31 @@ class Client(threading.Thread):
         else :
             reqClientCert = ""
 
-        initMsg = ("ServerInit:" + str(initNonce) + message_tuple[2] + ":" + cert + str(reqClientCert))
+        initMsg = ("ServerInit:" + str(initNonce) + ":" + message_tuple[2] + ":" + cert + str(reqClientCert))
         self.client_sock.send(initMsg)
 
 		#TODO Open certificate file, read in and send to client.
 		#     Verify return certificate.
 
+        data = self.client_sock.recv(5000)
+        initResponse = data.split(":")
+        if not self.validate_certificate(initResponse[RECV_CERT]):
+            print "Bad Cert"
+            return
+
+        # DERIVING PUBLIC KEY FROM CERTIFICATE + PRIVATE KEY#
+        public_key = keyutils.read_pubkey_from_pem(self.readCertificate("certs/minissl-server.pem"))
+        private_key = keyutils.read_privkey_from_pem(self.readCertificate("certs/minissl-server.key.pem"))
+
+                # COMPUTING SECRET #
+        secret = keyutils.generate_random(46)
+
+        # DERIVING KEYS FROM SECRET #
+
+        session_key_one = keyutils.create_hmac(secret, clientNonce + initNonce + '00000000')
+        session_key_two = keyutils.create_hmac(secret, clientNonce + initNonce + '11111111')
+
+        print private_key.decrypt(initResponse[1])
 
 
 
@@ -53,7 +82,7 @@ class Client(threading.Thread):
             if not message:
                 break
 
-            message_tuple = message.split(":")
+            message_tuple = message.split(':')
 
             if (message_tuple[0] == "ClientInit"):
                 self.init_connection(self, message_tuple)
