@@ -2,7 +2,7 @@
 # > Generate Nonce and send certificate
 # > Potential for certificate request from the client
 
-
+import pickle
 from Crypto.Cipher import AES
 import socket
 import threading
@@ -50,14 +50,15 @@ class Client(threading.Thread):
         else :
             reqClientCert = ""
 
-        initMsg = ("ServerInit:" + str(initNonce) + ":" + message_tuple[2] + ":" + cert + str(reqClientCert))
+        initMsg = ("ServerInit:", initNonce, message_tuple[2], cert, reqClientCert)
+        initMsg = pickle.Pickler(initMsg)
         self.client_sock.send(initMsg)
 
 		#TODO Open certificate file, read in and send to client.
 		#     Verify return certificate.
 
         data = self.client_sock.recv(5000)
-        initResponse = data.split(":")
+        init_response = pickle.Unpickler(data)
         print data
         if not self.validate_certificate(initResponse[RECV_CERT]):
             print "Bad Cert"
@@ -93,8 +94,7 @@ class Client(threading.Thread):
             if not message:
                 break
 
-            message_tuple = message.split(':')
-
+            message_tuple = pickle.Unpickler(message);
             if (message_tuple[0] == "ClientInit"):
                 self.init_connection(self, message_tuple)
                 # Split message into parts and send to handler.
