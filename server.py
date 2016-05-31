@@ -21,10 +21,15 @@ class Client(threading.Thread):
         self.addr = address
         self.start()
 
+    def verifyHash(self, key, all_msgs, recv_hash):
+        hashed_msgs = keyutils.create_hmac(key, all_msgs)
+        if hashed_msgs == recv_hash:
+            return 1
+        return 0
+
 # THIS HELPER VALIDATES CERTIFICATE #
 
     def validate_certificate(self,recv_certificate):
-        print recv_certificate
         if not keyutils.verify_certificate(self.readCertificate("certs/minissl-ca.pem"), recv_certificate):
             print "Bad Certificate"
             return 0
@@ -40,6 +45,9 @@ class Client(threading.Thread):
 
     @staticmethod
     def init_connection(self, message_tuple):
+        all_sent_msgs  = ""
+        all_recv_msgs = ""
+
         cert = self.readCertificate("certs/minissl-server.pem")
         clientNonce = message_tuple[1]
         initNonce = keyutils.generate_nonce(28)
@@ -52,14 +60,18 @@ class Client(threading.Thread):
 
         initMsg = ("ServerInit:", initNonce, message_tuple[2], cert, reqClientCert)
         initMsg = pickle.dumps(initMsg)
+        all_sent_msgs += initMsg
         self.client_sock.send(initMsg)
 
 		#TODO Open certificate file, read in and send to client.
 		#     Verify return certificate.
 
         data = self.client_sock.recv(5000)
+        all_recv_msgs += data
         initResponse = pickle.loads(data)
-        print initResponse[RECV_CERT]
+
+        # VALIDATING CERTIFICATE #
+
         if not self.validate_certificate(initResponse[RECV_CERT]):
             print "Bad Cert"
             return
@@ -69,21 +81,26 @@ class Client(threading.Thread):
         private_key = keyutils.read_privkey_from_pem(self.readCertificate("certs/minissl-server.key.pem"))
 
                 # COMPUTING SECRET #
-        secret = keyutils.generate_random(46)
-
-        # DERIVING KEYS FROM SECRET #
-
-        session_key_one = keyutils.create_hmac(secret, clientNonce + initNonce + '00000000')
-        session_key_two = keyutils.create_hmac(secret, clientNonce + initNonce + '11111111')
-
 
         rsa_cipher = PKCS1_OAEP.new(private_key)
         aes_key = rsa_cipher.decrypt(initResponse[3])
         aes_cipher = AES.new(aes_key, AES.MODE_CFB, initResponse[2])
-        print aes_cipher.decrypt(initResponse[1])
+        secret = aes_cipher.decrypt(initResponse[1])
 
+        # DERIVING KEYS FROM SECRET #
 
+        session_key_one = keyutils.create_hmac(secret, initNonce + clientNonce + '00000000')
+        session_key_two = keyutils.create_hmac(secret,  initNonce + clientNonce + '11111111')
 
+        if not self.verifyHash(session_key_two, all_sent_msgs, initResponse[RECV_CERT - 1]):
+            print "BAD HASH"
+            return
+        finalMsg = keyutils.create_hmac(session_key_two, all_sent_msgs)
+        all_sent_msgs += finalMsg
+
+        self.client_sock.send(finalMsg)
+
+        #FINAL STEP#
 
 
     def run(self):
@@ -92,7 +109,6 @@ class Client(threading.Thread):
             message = self.client_sock.recv(1024)
             if not message:
                 break
-            print message
             message_tuple = pickle.loads(message)
 
             if (message_tuple[0] == "ClientInit"):

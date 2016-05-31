@@ -18,7 +18,11 @@ CERT_REQ  = 4
 
 ###################
 
-
+def verifyHash(key, all_msgs, recv_hash):
+    hashed_msgs = keyutils.create_hmac(key, all_msgs)
+    if hashed_msgs == recv_hash:
+        return 1
+    return 0
 
 
 # THIS HELPER VALIDATES CERTIFICATE #
@@ -44,13 +48,16 @@ def readCertificate(file_path):
 
 # THIS HELPER INITIALISES THE CONNECTIONS #
 def initialise(socket):
+    all_recv_msgs = ""
+    all_sent_msgs = ""
     initNonce = keyutils.generate_nonce(28)
     initMsg = ("ClientInit", initNonce, "AES-HMAC")
     initMsg = pickle.dumps(initMsg)
+    all_sent_msgs += initMsg
     socket.send(initMsg)  # Sending the first message.
     data = socket.recv(2096)
     initResponse = pickle.loads(data)
-
+    all_recv_msgs += data
     # VALIDATING CERTIFICATE (See helper function above) #
     if not validate_certificate(initResponse[RECV_CERT]):
         print "Bad Cert"
@@ -65,28 +72,31 @@ def initialise(socket):
 
     # DERIVING KEYS FROM SECRET #
 
-    session_key_one = keyutils.create_hmac(secret, initResponse[RECV_NONCE]+ initNonce + '00000000')
+    session_key_one = keyutils.create_hmac(secret, initResponse[RECV_NONCE] + initNonce + '00000000')
     session_key_two = keyutils.create_hmac(secret, initResponse[RECV_NONCE] + initNonce + '11111111')
 
-    msgHMAC = keyutils.create_hmac(session_key_two, initMsg + data)
+    msgHMAC = keyutils.create_hmac(session_key_two, all_recv_msgs)
     # TODO: NEED TO DECRYPT THE AES KEY FIRST AND THEN DECRYPT THE MESSAGE WITH THAT KY
-    print initResponse[CERT_REQ]
-    encrypted = keyutils.encrypt_with_rsa_hybrid("HELLOWORLD", public_key)
+    encrypted = keyutils.encrypt_with_rsa_hybrid(secret, public_key)
 
-    confirm_msg = "ClientKex:", encrypted[0], encrypted[1], encrypted[2], msgHMAC,
+    confirm_msg = ("ClientKex:", encrypted[0], encrypted[1], encrypted[2], msgHMAC,)
 
     # IF CERTIFICATE REQUIRED THEN SEND IT
     if len(initResponse) == 5:
         if initResponse[CERT_REQ] == "CertReq":
-            print "ADDING CERTIFICATE"
             signedNonse = private_key.sign(initResponse[RECV_NONCE], private_key)
             confirm_msg = confirm_msg + (readCertificate("certs/minissl-client.pem"), str(signedNonse[0]), )
 
-
-
-    print confirm_msg
     p = pickle.dumps(confirm_msg)
+    all_sent_msgs += p
     socket.send(p)
+    finalMsg = socket.recv(2096)
+
+    if not verifyHash(session_key_two, all_recv_msgs, finalMsg):
+        print "BAD HASH"
+        return
+
+    print "IT'S FINISHED!"
 
 
 
