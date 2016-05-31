@@ -1,7 +1,7 @@
 # > Wait for initialisation message
 # > Generate Nonce and send certificate
 # > Potential for certificate request from the client
-
+from Crypto.Cipher import PKCS1_OAEP
 import pickle
 from Crypto.Cipher import AES
 import socket
@@ -46,19 +46,19 @@ class Client(threading.Thread):
         reqClientCert = raw_input("Would You Like A Client's Certificate? (Y/N): ")
 
         if reqClientCert == 'Y':
-            reqClientCert = ":CertReq"
+            reqClientCert = "CertReq"
         else :
             reqClientCert = ""
 
         initMsg = ("ServerInit:", initNonce, message_tuple[2], cert, reqClientCert)
-        initMsg = pickle.Pickler(initMsg)
+        initMsg = pickle.dumps(initMsg)
         self.client_sock.send(initMsg)
 
 		#TODO Open certificate file, read in and send to client.
 		#     Verify return certificate.
 
         data = self.client_sock.recv(5000)
-        initResponse = pickle.Unpickler(data)
+        initResponse = pickle.loads(data)
         print initResponse[RECV_CERT]
         if not self.validate_certificate(initResponse[RECV_CERT]):
             print "Bad Cert"
@@ -77,11 +77,10 @@ class Client(threading.Thread):
         session_key_two = keyutils.create_hmac(secret, clientNonce + initNonce + '11111111')
 
 
-
-        aes_key = private_key.decrypt(initResponse[3])
-        print initResponse[2]
-        aes_cypher = AES.new(aes_key, AES.MODE_CFB, initResponse[2])
-        print aes_cyper.decrypt(initResponse[1])
+        rsa_cipher = PKCS1_OAEP.new(private_key)
+        aes_key = rsa_cipher.decrypt(initResponse[3])
+        aes_cipher = AES.new(aes_key, AES.MODE_CFB, initResponse[2])
+        print aes_cipher.decrypt(initResponse[1])
 
 
 
@@ -93,8 +92,9 @@ class Client(threading.Thread):
             message = self.client_sock.recv(1024)
             if not message:
                 break
+            print message
+            message_tuple = pickle.loads(message)
 
-            message_tuple = pickle.Unpickler(message);
             if (message_tuple[0] == "ClientInit"):
                 self.init_connection(self, message_tuple)
                 # Split message into parts and send to handler.

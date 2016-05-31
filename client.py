@@ -7,6 +7,7 @@ import threading
 import binascii
 import ast
 import keyutils
+import pickle
 
 # DEFINES
 
@@ -44,10 +45,11 @@ def readCertificate(file_path):
 # THIS HELPER INITIALISES THE CONNECTIONS #
 def initialise(socket):
     initNonce = keyutils.generate_nonce(28)
-    initMsg = ("ClientInit:" + str(initNonce) + ":AES-HMAC")
+    initMsg = ("ClientInit", initNonce, "AES-HMAC")
+    initMsg = pickle.dumps(initMsg)
     socket.send(initMsg)  # Sending the first message.
     data = socket.recv(2096)
-    initResponse = data.split(":")
+    initResponse = pickle.loads(data)
 
     # VALIDATING CERTIFICATE (See helper function above) #
     if not validate_certificate(initResponse[RECV_CERT]):
@@ -80,7 +82,10 @@ def initialise(socket):
             signedNonse = private_key.sign(initResponse[RECV_NONCE], private_key)
             confirm_msg = confirm_msg + (readCertificate("certs/minissl-client.pem"), str(signedNonse[0]), )
 
-    p = pickle.Pickler(confirm_msg)
+
+
+    print confirm_msg
+    p = pickle.dumps(confirm_msg)
     socket.send(p)
 
 
