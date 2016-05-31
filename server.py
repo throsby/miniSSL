@@ -1,16 +1,28 @@
-# > Wait for initialisation message
-# > Generate Nonce and send certificate
-# > Potential for certificate request from the client
+# To run this in terminal: python server.py 50000 "certs/minissl-server.pem" "certs/minissl-server.key.pem" "payload.txt"
+
 from Crypto.Cipher import PKCS1_OAEP
 import pickle
 from Crypto.Cipher import AES
 import socket
 import threading
 import ast
+import sys
 from base64 import b64decode
 import keyutils
 
+    # 0: ClientKex
+    # 1: AES encrypted message
+    # 2: IV
+    # 3: Encrypted AES key
+    # 4: msgHMAC
+    # 5: OPTIONAL Client certificate
 RECV_CERT = 5
+
+# Run arguments
+LISTEN_PORT = sys.argv[1]
+SERVERCERT = sys.argv[2]
+SERVERPRIVKEY = sys.argv[3]
+PAYLOAD = sys.argv[4]
 
 class Client(threading.Thread):
     def __init__(self, server_socket, client_socket, address):
@@ -48,7 +60,7 @@ class Client(threading.Thread):
         all_sent_msgs  = ""
         all_recv_msgs = ""
 
-        cert = self.readCertificate("certs/minissl-server.pem")
+        cert = self.readCertificate(SERVERCERT)
         clientNonce = message_tuple[1]
         initNonce = keyutils.generate_nonce(28)
         reqClientCert = raw_input("Would You Like A Client's Certificate? (Y/N): ")
@@ -58,37 +70,31 @@ class Client(threading.Thread):
         else :
             reqClientCert = ""
 
-        initMsg = ("ServerInit:", initNonce, message_tuple[2], cert, reqClientCert)
+        initMsg = ("ServerInit", initNonce, message_tuple[2], cert, reqClientCert)
         initMsg = pickle.dumps(initMsg)
         all_sent_msgs += initMsg
         self.client_sock.send(initMsg)
-
-		#TODO Open certificate file, read in and send to client.
-		#     Verify return certificate.
 
         data = self.client_sock.recv(5000)
         all_recv_msgs += data
         initResponse = pickle.loads(data)
 
         # VALIDATING CERTIFICATE #
-
         if not self.validate_certificate(initResponse[RECV_CERT]):
             print "Bad Cert"
             return
 
         # DERIVING PUBLIC KEY FROM CERTIFICATE + PRIVATE KEY#
-        public_key = keyutils.read_pubkey_from_pem(self.readCertificate("certs/minissl-server.pem"))
-        private_key = keyutils.read_privkey_from_pem(self.readCertificate("certs/minissl-server.key.pem"))
+        public_key = keyutils.read_pubkey_from_pem(initResponse[RECV_CERT])
+        private_key = keyutils.read_privkey_from_pem(self.readCertificate(SERVERPRIVKEY))
 
-                # COMPUTING SECRET #
-
+        # COMPUTING SECRET #
         rsa_cipher = PKCS1_OAEP.new(private_key)
         aes_key = rsa_cipher.decrypt(initResponse[3])
         aes_cipher = AES.new(aes_key, AES.MODE_CFB, initResponse[2])
         secret = aes_cipher.decrypt(initResponse[1])
 
         # DERIVING KEYS FROM SECRET #
-
         session_key_one = keyutils.create_hmac(secret, initNonce + clientNonce + '00000000')
         session_key_two = keyutils.create_hmac(secret,  initNonce + clientNonce + '11111111')
 
@@ -100,7 +106,14 @@ class Client(threading.Thread):
 
         self.client_sock.send(finalMsg)
 
-        #FINAL STEP#
+        # FINAL STEP #
+        file = open(PAYLOAD, 'r')
+        file_data = file.read()
+        encrypted_data = keyutils.encrypt_with_rsa_hybrid(file_data, public_key)
+        pickle_payload = pickle.dumps(encrypted_data)
+        self.client_sock.send(pickle_payload)
+        print "File sent to client"
+        print "Server terminated"
 
 
     def run(self):
@@ -115,11 +128,11 @@ class Client(threading.Thread):
                 self.init_connection(self, message_tuple)
                 # Split message into parts and send to handler.
 
-
+print "Listen port is:" + LISTEN_PORT
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.bind(('', 50000))
+server_socket.bind(('', int(LISTEN_PORT)))
 server_socket.listen(5)
 
-while 1:
-    (client_socket, address) = server_socket.accept()
-    Client(server_socket, client_socket, address)
+(client_socket, address) = server_socket.accept()
+Client(server_socket, client_socket, address)
+sys.exit()

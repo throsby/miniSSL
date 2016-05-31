@@ -1,6 +1,9 @@
+# To run this in terminal: python client.py "127.0.0.1" 50000 "certs/minissl-client.pem" "certs/minissl-client.key.pem"
+
 # TODO:
 # > CHECK FOR EXPIRY OF CERTIFICATE
 # > GENERATE RSA KEY AND BEGIN ENCRYPTION
+from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Cipher import AES
 import socket
 import threading
@@ -8,6 +11,7 @@ import binascii
 import ast
 import keyutils
 import pickle
+import sys
 
 # DEFINES
 
@@ -15,6 +19,16 @@ RECV_HEAD = 0
 RECV_NONCE = 1
 RECV_CERT = 3
 CERT_REQ  = 4
+
+message_size = 4096
+
+path_to_ca_cert = "certs/minissl-ca.pem"
+
+# Run arguments
+DESTINATION_IP = sys.argv[1]
+DESTINATION_PORT = sys.argv[2]
+CLIENT_CERT = sys.argv[3]
+CLIENT_PRIVATEKEY = sys.argv[4]
 
 ###################
 
@@ -28,7 +42,7 @@ def verifyHash(key, all_msgs, recv_hash):
 # THIS HELPER VALIDATES CERTIFICATE #
 
 def validate_certificate(recv_certificate):
-    if not keyutils.verify_certificate(readCertificate("certs/minissl-ca.pem"), recv_certificate):
+    if not keyutils.verify_certificate(readCertificate(path_to_ca_cert), recv_certificate):
         print "Bad Certificate"
         return 0
     elif keyutils.read_issuer(recv_certificate) != keyutils.read_issuer(readCertificate("certs/minissl-server.pem")):
@@ -55,7 +69,7 @@ def initialise(socket):
     initMsg = pickle.dumps(initMsg)
     all_sent_msgs += initMsg
     socket.send(initMsg)  # Sending the first message.
-    data = socket.recv(2096)
+    data = socket.recv(message_size)
     initResponse = pickle.loads(data)
     all_recv_msgs += data
     # VALIDATING CERTIFICATE (See helper function above) #
@@ -65,7 +79,7 @@ def initialise(socket):
 
     # DERIVING PUBLIC KEY FROM CERTIFICATE + PRIVATE KEY#
     public_key = keyutils.read_pubkey_from_pem(initResponse[RECV_CERT])
-    private_key = keyutils.read_privkey_from_pem(readCertificate("certs/minissl-client.key.pem"))
+    private_key = keyutils.read_privkey_from_pem(readCertificate(CLIENT_PRIVATEKEY))
 
     # COMPUTING SECRET #
     secret = keyutils.generate_random(46)
@@ -90,22 +104,39 @@ def initialise(socket):
     p = pickle.dumps(confirm_msg)
     all_sent_msgs += p
     socket.send(p)
-    finalMsg = socket.recv(2096)
+    finalMsg = socket.recv(message_size)
 
     if not verifyHash(session_key_two, all_recv_msgs, finalMsg):
         print "BAD HASH"
         return
 
-    print "IT'S FINISHED!"
+    print "Sending get command"
+    get_message = ("GET",)
+    pickle_message = pickle.dumps(get_message)
+    socket.send(pickle_message)
+
+    file_data_pickle = socket.recv(message_size)
+    file_date = pickle.loads(file_data_pickle)
+    rsa_cipher = PKCS1_OAEP.new(private_key)
+    aes_key = rsa_cipher.decrypt(file_date[2])
+    aes_cipher = AES.new(aes_key, AES.MODE_CFB, file_date[1])
+    file_data = aes_cipher.decrypt(file_date[0])
+
+    f = open("received_payload.txt", 'wb')
+    f.write(file_data)
+    f.close()
+    print "File received"
+    #socket.close()
+    print "Client terminated"
+    sys.exit()
 
 
-
-SERVER = "127.0.0.1"
-print(SERVER)
+SERVER_IP = DESTINATION_IP
+print(SERVER_IP)
 raw_input('Enter To Continue: ')
 receiveSem = threading.Semaphore([1])
 socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-socket.connect((SERVER, 50000))
+socket.connect((SERVER_IP, int(DESTINATION_PORT)))
 
 
 initialise(socket)
