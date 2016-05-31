@@ -71,15 +71,17 @@ def initialise(socket):
     print initResponse[CERT_REQ]
     encrypted = keyutils.encrypt_with_rsa_hybrid("HELLOWORLD", public_key)
 
-    confirm_msg = "ClientKex:" + encrypted[0] + ":" + encrypted[1] + ":" + encrypted [2] + ":" + msgHMAC
+    confirm_msg = "ClientKex:", encrypted[0], encrypted[1], encrypted[2], msgHMAC,
+
     # IF CERTIFICATE REQUIRED THEN SEND IT
     if len(initResponse) == 5:
         if initResponse[CERT_REQ] == "CertReq":
             print "ADDING CERTIFICATE"
             signedNonse = private_key.sign(initResponse[RECV_NONCE], private_key)
-            confirm_msg = confirm_msg + ":" + readCertificate("certs/minissl-client.pem") + ":" + str(signedNonse[0])
+            confirm_msg = confirm_msg + (readCertificate("certs/minissl-client.pem"), str(signedNonse[0]), )
 
-    socket.send(confirm_msg)
+    p = pickle.Pickler(confirm_msg)
+    socket.send(p)
 
 
 
@@ -92,5 +94,3 @@ socket.connect((SERVER, 50000))
 
 
 initialise(socket)
-
-
