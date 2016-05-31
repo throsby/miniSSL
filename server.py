@@ -2,12 +2,15 @@
 # > Generate Nonce and send certificate
 # > Potential for certificate request from the client
 
+
+from Crypto.Cipher import AES
 import socket
 import threading
-
+import ast
+from base64 import b64decode
 import keyutils
 
-RECV_CERT = 3
+RECV_CERT = 5
 
 class Client(threading.Thread):
     def __init__(self, server_socket, client_socket, address):
@@ -21,6 +24,7 @@ class Client(threading.Thread):
 # THIS HELPER VALIDATES CERTIFICATE #
 
     def validate_certificate(self,recv_certificate):
+        print recv_certificate
         if not keyutils.verify_certificate(self.readCertificate("certs/minissl-ca.pem"), recv_certificate):
             print "Bad Certificate"
             return 0
@@ -54,6 +58,7 @@ class Client(threading.Thread):
 
         data = self.client_sock.recv(5000)
         initResponse = data.split(":")
+        print data
         if not self.validate_certificate(initResponse[RECV_CERT]):
             print "Bad Cert"
             return
@@ -70,7 +75,13 @@ class Client(threading.Thread):
         session_key_one = keyutils.create_hmac(secret, clientNonce + initNonce + '00000000')
         session_key_two = keyutils.create_hmac(secret, clientNonce + initNonce + '11111111')
 
-        print private_key.decrypt(initResponse[1])
+
+
+        aes_key = private_key.decrypt(initResponse[3])
+        print initResponse[2]
+        aes_cypher = AES.new(aes_key, AES.MODE_CFB, initResponse[2])
+        print aes_cyper.decrypt(initResponse[1])
+
 
 
 

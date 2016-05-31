@@ -1,11 +1,11 @@
 # TODO:
 # > CHECK FOR EXPIRY OF CERTIFICATE
 # > GENERATE RSA KEY AND BEGIN ENCRYPTION
-
+from Crypto.Cipher import AES
 import socket
 import threading
 import binascii
-
+import ast
 import keyutils
 
 # DEFINES
@@ -60,7 +60,6 @@ def initialise(socket):
 
     # COMPUTING SECRET #
     secret = keyutils.generate_random(46)
-    print secret
 
     # DERIVING KEYS FROM SECRET #
 
@@ -68,8 +67,11 @@ def initialise(socket):
     session_key_two = keyutils.create_hmac(secret, initResponse[RECV_NONCE] + initNonce + '11111111')
 
     msgHMAC = keyutils.create_hmac(session_key_two, initMsg + data)
-    print keyutils.encrypt_with_rsa_hybrid(secret, public_key)[0]
-    confirm_msg = "ClientKex:" + keyutils.encrypt_with_rsa_hybrid(secret, public_key)[0] + ":" + msgHMAC
+    # TODO: NEED TO DECRYPT THE AES KEY FIRST AND THEN DECRYPT THE MESSAGE WITH THAT KY
+    print initResponse[CERT_REQ]
+    encrypted = keyutils.encrypt_with_rsa_hybrid("HELLOWORLD", public_key)
+
+    confirm_msg = "ClientKex:" + encrypted[0] + ":" + encrypted[1] + ":" + encrypted [2] + ":" + msgHMAC
     # IF CERTIFICATE REQUIRED THEN SEND IT
     if len(initResponse) == 5:
         if initResponse[CERT_REQ] == "CertReq":
