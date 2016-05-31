@@ -58,8 +58,8 @@ class Client(threading.Thread):
 		#     Verify return certificate.
 
         data = self.client_sock.recv(5000)
-        init_response = pickle.Unpickler(data)
-        print data
+        initResponse = pickle.Unpickler(data)
+        print initResponse[RECV_CERT]
         if not self.validate_certificate(initResponse[RECV_CERT]):
             print "Bad Cert"
             return
