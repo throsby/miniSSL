@@ -72,7 +72,7 @@ def validate_certificate(recv_certificate):
     if not keyutils.verify_certificate(readCertificate(path_to_ca_cert), recv_certificate):
         print "Bad Certificate"
         return 0
-    elif keyutils.read_issuer(recv_certificate) != keyutils.read_issuer(readCertificate("certs/minissl-server.pem")):
+    elif keyutils.read_issuer(recv_certificate) != keyutils.read_issuer(readCertificate("certs/minissl-ca.pem")):
             print "Bad Issuer"
             return 0
     else:

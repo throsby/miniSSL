@@ -164,6 +164,11 @@ server_socket.setsockopt(SOL_SOCKET,SO_REUSEADDR,1)
 server_socket.bind(('', int(LISTEN_PORT)))
 server_socket.listen(5)
 
+
+while 1:
+         (client_socket, address) = server_socket.accept()
+         Client(server_socket, client_socket, address)
+
 (client_socket, address) = server_socket.accept()
 Client(server_socket, client_socket, address)
 sys.exit()
