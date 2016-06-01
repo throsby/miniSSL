@@ -41,25 +41,25 @@ def verifyHash(key, all_msgs, recv_hash):
         return 1
     return 0
 
-def send_msg(sock, msg):
-    # Prefix each message with a 4-byte length (network byte order)
-    msg = struct.pack('>I', len(msg)) + msg
-    sock.sendall(msg)
+def smartSend(socket, data):
 
-def recv_msg(sock):
-    # Read message length and unpack it into an integer
-    raw_msglen = recvall(sock, 4)
-    if not raw_msglen:
+    data = struct.pack('>I', len(data)) + data
+    socket.sendall(data)
+
+def smartRecv(sock):
+
+    message_length = recvHelper(sock, 4)
+    if not message_length:
         return None
-    msglen = struct.unpack('>I', raw_msglen)[0]
-    # Read the message data
-    return recvall(sock, msglen)
+    message_length = struct.unpack('>I', message_length)[0]
 
-def recvall(sock, n):
-    # Helper function to recv n bytes or return None if EOF is hit
+    return recvHelper(sock, message_length)
+
+def recvHelper(sock, message_length):
+
     data = ''
-    while len(data) < n:
-        packet = sock.recv(n - len(data))
+    while len(data) < message_length:
+        packet = sock.recv(message_length - len(data))
         if not packet:
             return None
         data += packet
@@ -94,9 +94,9 @@ def initialise(socket):
     initMsg = ("ClientInit", initNonce, "AES-HMAC")
     initMsg = pickle.dumps(initMsg)
     all_sent_msgs += initMsg
-    send_msg(socket, initMsg)
+    smartSend(socket, initMsg)
     time.sleep(0.1)
-    data = recv_msg(socket)
+    data = smartRecv(socket)
     initResponse = pickle.loads(data)
     all_recv_msgs += data
     # VALIDATING CERTIFICATE (See helper function above) #
@@ -129,11 +129,10 @@ def initialise(socket):
             confirm_msg = confirm_msg + (readCertificate("certs/minissl-client.pem"), str(signedNonse[0]), )
     p = pickle.dumps(confirm_msg)
 
-    print "SENT: " + p
     all_sent_msgs += p
-    send_msg(socket, p)
+    smartSend(socket, p)
     time.sleep(0.1)
-    finalMsg = recv_msg(socket)
+    finalMsg = smartRecv(socket)
     if not verifyHash(session_key_two, all_recv_msgs, finalMsg):
         print "BAD HASH"
         return
@@ -141,9 +140,9 @@ def initialise(socket):
     print "Sending get command"
     get_message = ("GET",)
     pickle_message = pickle.dumps(get_message)
-    send_msg(socket, pickle_message)
+    smartSend(socket, pickle_message)
     time.sleep(0.1)
-    file_data_pickle = recv_msg(socket)
+    file_data_pickle = smartRecv(socket)
     file_date = pickle.loads(file_data_pickle)
     rsa_cipher = PKCS1_OAEP.new(private_key)
     aes_key = rsa_cipher.decrypt(file_date[2])
