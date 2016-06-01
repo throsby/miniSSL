@@ -157,9 +157,11 @@ def initialise(socket):
     pickle_message = pickle.dumps(get_message)
     smartSend(socket, pickle_message)
     file_data_pickle = smartRecv(socket)
+    print 'Transfer complete.'
+    print 'Data unpickling...'
     file_data = pickle.loads(file_data_pickle)
-
     aes_cipher = AES.new(session_key_one, AES.MODE_CFB, file_data[0])
+    print 'Data decrypting...'
     file_data = aes_cipher.decrypt(file_data[1])
     file_data = Padding.removePadding(file_data)
     f = open('received_payload.txt', 'wb')

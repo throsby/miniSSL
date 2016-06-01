@@ -166,16 +166,19 @@ class Client(threading.Thread):
 
             # FINAL STEP #
 
-            print 'Received GET command. Sending file...'
+            print 'Received GET command.'
             file = open(PAYLOAD, 'r')
             file_data = file.read()
             init_vector = keyutils.generate_random(16)
             aes_cipher = AES.new(session_key_one, AES.MODE_CFB,
                                  init_vector)
             file_data = Padding.appendPadding(file_data)
+            print 'Encrypting file...'
             encrypted_data = aes_cipher.encrypt(file_data)
             pickle_payload = (init_vector, encrypted_data)
+            print 'Pickleing payload...'
             pickle_payload = pickle.dumps(pickle_payload)
+            print 'Sending payload...'
             self.smartSend(self.client_sock, pickle_payload)
             print 'File sent to client.'
 
