@@ -3,12 +3,14 @@
 from Crypto.Cipher import PKCS1_OAEP
 import pickle
 from Crypto.Cipher import AES
-import socket
+from socket import *
 import threading
 import ast
 import sys
 from base64 import b64decode
 import keyutils
+import time
+import struct
 
     # 0: ClientKex
     # 1: AES encrypted message
@@ -23,6 +25,8 @@ LISTEN_PORT = sys.argv[1]
 SERVERCERT = sys.argv[2]
 SERVERPRIVKEY = sys.argv[3]
 PAYLOAD = sys.argv[4]
+
+message_size = 10000
 
 class Client(threading.Thread):
     def __init__(self, server_socket, client_socket, address):
@@ -48,12 +52,31 @@ class Client(threading.Thread):
         else:
             return 1
 
+    def send_msg(self, sock, msg):
+        msg = struct.pack('>I', len(msg)) + msg
+        sock.sendall(msg)
+
+    def recv_msg(self, sock):
+        raw_msglen = self.recvall(sock, 4)
+        if not raw_msglen:
+            return None
+        msglen = struct.unpack('>I', raw_msglen)[0]=
+        return self.recvall(sock, msglen)
+
+    def recvall(self, sock, n):
+        data = ''
+        while len(data) < n:
+            packet = sock.recv(n - len(data))
+            if not packet:
+                return None
+            data += packet
+        return data
 
     def readCertificate(self, file_path):
-	f = open(file_path)
-	cert = f.read()
+    	f = open(file_path)
+    	cert = f.read()
         f.close()
-	return cert
+    	return cert
 
     @staticmethod
     def init_connection(self, message_tuple):
@@ -70,12 +93,12 @@ class Client(threading.Thread):
         else :
             reqClientCert = ""
 
-        initMsg = ("ServerInit", initNonce, message_tuple[2], cert, reqClientCert)
+        initMsg = ("ServerInit", initNonce, message_tuple[2], cert, reqClientCert,)
         initMsg = pickle.dumps(initMsg)
         all_sent_msgs += initMsg
-        self.client_sock.send(initMsg)
+        self.send_msg(self.client_sock, initMsg)
 
-        data = self.client_sock.recv(5000)
+        data = self.recv_msg(self.client_sock)
         all_recv_msgs += data
         initResponse = pickle.loads(data)
 
@@ -104,14 +127,14 @@ class Client(threading.Thread):
         finalMsg = keyutils.create_hmac(session_key_two, all_sent_msgs)
         all_sent_msgs += finalMsg
 
-        self.client_sock.send(finalMsg)
+        self.send_msg(self.client_sock, finalMsg)
 
         # FINAL STEP #
         file = open(PAYLOAD, 'r')
         file_data = file.read()
         encrypted_data = keyutils.encrypt_with_rsa_hybrid(file_data, public_key)
         pickle_payload = pickle.dumps(encrypted_data)
-        self.client_sock.send(pickle_payload)
+        self.send_msg(self.client_sock, pickle_payload)
         print "File sent to client"
         print "Server terminated"
 
@@ -119,17 +142,18 @@ class Client(threading.Thread):
     def run(self):
         print(address)
         while 1:
-            message = self.client_sock.recv(1024)
+            message = self.recv_msg(self.client_sock)
             if not message:
                 break
+
             message_tuple = pickle.loads(message)
 
             if (message_tuple[0] == "ClientInit"):
                 self.init_connection(self, message_tuple)
                 # Split message into parts and send to handler.
 
-print "Listen port is:" + LISTEN_PORT
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket = socket(AF_INET, SOCK_STREAM)
+server_socket.setsockopt(SOL_SOCKET,SO_REUSEADDR,1)
 server_socket.bind(('', int(LISTEN_PORT)))
 server_socket.listen(5)
 
