@@ -5,14 +5,15 @@
 # > GENERATE RSA KEY AND BEGIN ENCRYPTION
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Cipher import AES
-import socket
+from socket import *
 import threading
 import binascii
 import ast
 import keyutils
 import pickle
 import sys
-
+import time
+import struct
 # DEFINES
 
 RECV_HEAD = 0
@@ -20,7 +21,9 @@ RECV_NONCE = 1
 RECV_CERT = 3
 CERT_REQ  = 4
 
-message_size = 4096
+
+
+message_size = 10000
 
 path_to_ca_cert = "certs/minissl-ca.pem"
 
@@ -38,6 +41,29 @@ def verifyHash(key, all_msgs, recv_hash):
         return 1
     return 0
 
+def send_msg(sock, msg):
+    # Prefix each message with a 4-byte length (network byte order)
+    msg = struct.pack('>I', len(msg)) + msg
+    sock.sendall(msg)
+
+def recv_msg(sock):
+    # Read message length and unpack it into an integer
+    raw_msglen = recvall(sock, 4)
+    if not raw_msglen:
+        return None
+    msglen = struct.unpack('>I', raw_msglen)[0]
+    # Read the message data
+    return recvall(sock, msglen)
+
+def recvall(sock, n):
+    # Helper function to recv n bytes or return None if EOF is hit
+    data = ''
+    while len(data) < n:
+        packet = sock.recv(n - len(data))
+        if not packet:
+            return None
+        data += packet
+    return data
 
 # THIS HELPER VALIDATES CERTIFICATE #
 
@@ -68,8 +94,9 @@ def initialise(socket):
     initMsg = ("ClientInit", initNonce, "AES-HMAC")
     initMsg = pickle.dumps(initMsg)
     all_sent_msgs += initMsg
-    socket.send(initMsg)  # Sending the first message.
-    data = socket.recv(message_size)
+    send_msg(socket, initMsg)
+    time.sleep(0.1)
+    data = recv_msg(socket)
     initResponse = pickle.loads(data)
     all_recv_msgs += data
     # VALIDATING CERTIFICATE (See helper function above) #
@@ -100,12 +127,13 @@ def initialise(socket):
         if initResponse[CERT_REQ] == "CertReq":
             signedNonse = private_key.sign(initResponse[RECV_NONCE], private_key)
             confirm_msg = confirm_msg + (readCertificate("certs/minissl-client.pem"), str(signedNonse[0]), )
-
     p = pickle.dumps(confirm_msg)
-    all_sent_msgs += p
-    socket.send(p)
-    finalMsg = socket.recv(message_size)
 
+    print "SENT: " + p
+    all_sent_msgs += p
+    send_msg(socket, p)
+    time.sleep(0.1)
+    finalMsg = recv_msg(socket)
     if not verifyHash(session_key_two, all_recv_msgs, finalMsg):
         print "BAD HASH"
         return
@@ -113,9 +141,9 @@ def initialise(socket):
     print "Sending get command"
     get_message = ("GET",)
     pickle_message = pickle.dumps(get_message)
-    socket.send(pickle_message)
-
-    file_data_pickle = socket.recv(message_size)
+    send_msg(socket, pickle_message)
+    time.sleep(0.1)
+    file_data_pickle = recv_msg(socket)
     file_date = pickle.loads(file_data_pickle)
     rsa_cipher = PKCS1_OAEP.new(private_key)
     aes_key = rsa_cipher.decrypt(file_date[2])
@@ -135,7 +163,8 @@ SERVER_IP = DESTINATION_IP
 print(SERVER_IP)
 raw_input('Enter To Continue: ')
 receiveSem = threading.Semaphore([1])
-socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+socket = socket(AF_INET, SOCK_STREAM)
+socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
 socket.connect((SERVER_IP, int(DESTINATION_PORT)))
 
 
