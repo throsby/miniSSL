@@ -1,4 +1,4 @@
-# To run this in terminal: python server.py 50000 "certs/minissl-server.pem" "certs/minissl-server.key.pem" "payload.txt"
+# To run this in terminal: python server.py 50000 "certs/minissl-server.pem" "certs/minissl-server.key.pem" "ClientAuth/SimpleAuth" "payload.txt"
 
 from Crypto.Cipher import PKCS1_OAEP
 import pickle
@@ -14,12 +14,12 @@ import time
 import struct
 import Padding
 
-    # 0: ClientKex
-    # 1: AES encrypted message
-    # 2: IV
-    # 3: Encrypted AES key
-    # 4: msgHMAC
-    # 5: OPTIONAL Client certificate
+# 0: Message type
+# 1: AES encrypted message
+# 2: IV
+# 3: Encrypted AES key
+# 4: msgHMAC
+# 5: OPTIONAL Client certificate
 RECV_CERT = 5
 
 # Run arguments
@@ -28,8 +28,6 @@ SERVERCERT = sys.argv[2]
 SERVERPRIVKEY = sys.argv[3]
 AUTHMETHOD = sys.argv[4]
 PAYLOAD = sys.argv[5]
-
-message_size = 10000
 
 class Client(threading.Thread):
     def __init__(self, server_socket, client_socket, address):
@@ -46,11 +44,11 @@ class Client(threading.Thread):
             return 1
         return 0
 
-# THIS HELPER VALIDATES CERTIFICATE #
 
+    # THIS HELPER VALIDATES CERTIFICATE #
     def validate_certificate(self,recv_certificate):
         if not keyutils.verify_certificate(self.readCertificate("certs/minissl-ca.pem"), recv_certificate):
-            print "Bad Certificate"
+            print "Bad Certificate!"
             return 0
         else:
             return 1
@@ -83,7 +81,7 @@ class Client(threading.Thread):
 
     @staticmethod
     def init_connection(self, message_tuple):
-        all_sent_msgs  = ""
+        all_sent_msgs = ""
         all_recv_msgs = ""
 
         cert = self.readCertificate(SERVERCERT)
@@ -95,6 +93,7 @@ class Client(threading.Thread):
         else :
             reqClientCert = ""
 
+        print "Initiating handshake..."
         initMsg = ("ServerInit", initNonce, message_tuple[2], cert, reqClientCert,)
         initMsg = pickle.dumps(initMsg)
         all_sent_msgs += initMsg
@@ -107,7 +106,7 @@ class Client(threading.Thread):
         # VALIDATING CERTIFICATE #
         if reqClientCert:
             if not self.validate_certificate(initResponse[RECV_CERT]):
-                print "Bad Cert"
+                print "Bad Certificate!"
                 return
 
         # DERIVING PUBLIC KEY FROM CERTIFICATE + PRIVATE KEY#
@@ -131,22 +130,27 @@ class Client(threading.Thread):
 
         self.smartSend(self.client_sock, finalMsg)
 
-        # FINAL STEP #
-        file = open(PAYLOAD, 'r')
-        file_data = file.read()
-        #encrypted_data = keyutils.encrypt_with_rsa_hybrid(file_data, public_key)
-        init_vector = keyutils.generate_random(16)
-        aes_cipher = AES.new(session_key_one, AES.MODE_CFB, init_vector)
-        file_data = Padding.appendPadding(file_data)
-        encrypted_data = aes_cipher.encrypt(file_data)
-        pickle_payload = (init_vector, encrypted_data)
-        pickle_payload = pickle.dumps(pickle_payload)
-        self.smartSend(self.client_sock, pickle_payload)
-        print "File sent to client"
-        print "Server terminated"
+        print "Handshake was succesful. Waiting for command..."
+        data = self.smartRecv(self.client_sock)
+        command = pickle.loads(data)
+
+        if (command[0] == "GET"):
+            # FINAL STEP #
+            print "Received GET command. Sending file..."
+            file = open(PAYLOAD, 'r')
+            file_data = file.read()
+            init_vector = keyutils.generate_random(16)
+            aes_cipher = AES.new(session_key_one, AES.MODE_CFB, init_vector)
+            file_data = Padding.appendPadding(file_data)
+            encrypted_data = aes_cipher.encrypt(file_data)
+            pickle_payload = (init_vector, encrypted_data)
+            pickle_payload = pickle.dumps(pickle_payload)
+            self.smartSend(self.client_sock, pickle_payload)
+            print "File sent to client."
 
 
     def run(self):
+        print "Connected to:"
         print(address)
         while 1:
             message = self.smartRecv(self.client_sock)
@@ -156,19 +160,22 @@ class Client(threading.Thread):
             message_tuple = pickle.loads(message)
 
             if (message_tuple[0] == "ClientInit"):
-                self.init_connection(self, message_tuple)
-                # Split message into parts and send to handler.
+                try:
+                    self.init_connection(self, message_tuple)
+                except Exception, e:
+                    print "Transfer failed with error: " + e
+                else:
+                    print "Transfer was succesful."
+                finally:
+                    self.client_sock.close()
+                    print "Session terminated."
+                    break
 
 server_socket = socket(AF_INET, SOCK_STREAM)
 server_socket.setsockopt(SOL_SOCKET,SO_REUSEADDR,1)
 server_socket.bind(('', int(LISTEN_PORT)))
 server_socket.listen(5)
 
-
 while 1:
-         (client_socket, address) = server_socket.accept()
-         Client(server_socket, client_socket, address)
-
-(client_socket, address) = server_socket.accept()
-Client(server_socket, client_socket, address)
-sys.exit()
+     (client_socket, address) = server_socket.accept()
+     Client(server_socket, client_socket, address)

@@ -80,7 +80,7 @@ def readCertificate(file_path):
 def initialise(socket):
     all_recv_msgs = ""
     all_sent_msgs = ""
-    print "Initiating handshake..."
+    print "Connected. Initiating handshake..."
     initNonce = keyutils.generate_nonce(28)
     initMsg = ("ClientInit", initNonce, "AES-HMAC")
     initMsg = pickle.dumps(initMsg)
@@ -145,7 +145,7 @@ def initialise(socket):
 
 
 SERVER_IP = DESTINATION_IP
-print(SERVER_IP)
+print "Attempting to connect to: " + SERVER_IP
 receiveSem = threading.Semaphore([1])
 socket = socket(AF_INET, SOCK_STREAM)
 socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
