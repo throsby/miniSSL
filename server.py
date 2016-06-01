@@ -6,11 +6,13 @@ from Crypto.Cipher import AES
 from socket import *
 import threading
 import ast
+from binascii import hexlify,unhexlify
 import sys
 from base64 import b64decode
 import keyutils
 import time
 import struct
+import Padding
 
     # 0: ClientKex
     # 1: AES encrypted message
@@ -24,7 +26,8 @@ RECV_CERT = 5
 LISTEN_PORT = sys.argv[1]
 SERVERCERT = sys.argv[2]
 SERVERPRIVKEY = sys.argv[3]
-PAYLOAD = sys.argv[4]
+AUTHMETHOD = sys.argv[4]
+PAYLOAD = sys.argv[5]
 
 message_size = 10000
 
@@ -52,31 +55,31 @@ class Client(threading.Thread):
         else:
             return 1
 
-    def send_msg(self, sock, msg):
-        msg = struct.pack('>I', len(msg)) + msg
-        sock.sendall(msg)
+    def smartSend(self, socket, data):
+        data = struct.pack('>I', len(data)) + data
+        socket.sendall(data)
 
-    def recv_msg(self, sock):
-        raw_msglen = self.recvall(sock, 4)
-        if not raw_msglen:
+    def smartRecv(self, socket):
+        message_length = self.recvHelper(socket, 4)
+        if not message_length:
             return None
-        msglen = struct.unpack('>I', raw_msglen)[0]=
-        return self.recvall(sock, msglen)
+        message_length = struct.unpack('>I', message_length)[0]
+        return self.recvHelper(socket, message_length)
 
-    def recvall(self, sock, n):
+    def recvHelper(self, socket, message_length):
         data = ''
-        while len(data) < n:
-            packet = sock.recv(n - len(data))
+        while len(data) < message_length:
+            packet = socket.recv(message_length - len(data))
             if not packet:
                 return None
             data += packet
         return data
 
     def readCertificate(self, file_path):
-    	f = open(file_path)
-    	cert = f.read()
+        f = open(file_path)
+        cert = f.read()
         f.close()
-    	return cert
+        return cert
 
     @staticmethod
     def init_connection(self, message_tuple):
@@ -86,9 +89,8 @@ class Client(threading.Thread):
         cert = self.readCertificate(SERVERCERT)
         clientNonce = message_tuple[1]
         initNonce = keyutils.generate_nonce(28)
-        reqClientCert = raw_input("Would You Like A Client's Certificate? (Y/N): ")
 
-        if reqClientCert == 'Y':
+        if AUTHMETHOD == 'ClientAuth':
             reqClientCert = "CertReq"
         else :
             reqClientCert = ""
@@ -96,19 +98,19 @@ class Client(threading.Thread):
         initMsg = ("ServerInit", initNonce, message_tuple[2], cert, reqClientCert,)
         initMsg = pickle.dumps(initMsg)
         all_sent_msgs += initMsg
-        self.send_msg(self.client_sock, initMsg)
+        self.smartSend(self.client_sock, initMsg)
 
-        data = self.recv_msg(self.client_sock)
+        data = self.smartRecv(self.client_sock)
         all_recv_msgs += data
         initResponse = pickle.loads(data)
 
         # VALIDATING CERTIFICATE #
-        if not self.validate_certificate(initResponse[RECV_CERT]):
-            print "Bad Cert"
-            return
+        if reqClientCert:
+            if not self.validate_certificate(initResponse[RECV_CERT]):
+                print "Bad Cert"
+                return
 
         # DERIVING PUBLIC KEY FROM CERTIFICATE + PRIVATE KEY#
-        public_key = keyutils.read_pubkey_from_pem(initResponse[RECV_CERT])
         private_key = keyutils.read_privkey_from_pem(self.readCertificate(SERVERPRIVKEY))
 
         # COMPUTING SECRET #
@@ -127,14 +129,19 @@ class Client(threading.Thread):
         finalMsg = keyutils.create_hmac(session_key_two, all_sent_msgs)
         all_sent_msgs += finalMsg
 
-        self.send_msg(self.client_sock, finalMsg)
+        self.smartSend(self.client_sock, finalMsg)
 
         # FINAL STEP #
         file = open(PAYLOAD, 'r')
         file_data = file.read()
-        encrypted_data = keyutils.encrypt_with_rsa_hybrid(file_data, public_key)
-        pickle_payload = pickle.dumps(encrypted_data)
-        self.send_msg(self.client_sock, pickle_payload)
+        #encrypted_data = keyutils.encrypt_with_rsa_hybrid(file_data, public_key)
+        init_vector = keyutils.generate_random(16)
+        aes_cipher = AES.new(session_key_one, AES.MODE_CFB, init_vector)
+        file_data = Padding.appendPadding(file_data)
+        encrypted_data = aes_cipher.encrypt(file_data)
+        pickle_payload = (init_vector, encrypted_data)
+        pickle_payload = pickle.dumps(pickle_payload)
+        self.smartSend(self.client_sock, pickle_payload)
         print "File sent to client"
         print "Server terminated"
 
@@ -142,7 +149,7 @@ class Client(threading.Thread):
     def run(self):
         print(address)
         while 1:
-            message = self.recv_msg(self.client_sock)
+            message = self.smartRecv(self.client_sock)
             if not message:
                 break
 

@@ -14,6 +14,7 @@ import pickle
 import sys
 import time
 import struct
+import Padding
 # DEFINES
 
 RECV_HEAD = 0
@@ -143,12 +144,13 @@ def initialise(socket):
     smartSend(socket, pickle_message)
     time.sleep(0.1)
     file_data_pickle = smartRecv(socket)
-    file_date = pickle.loads(file_data_pickle)
-    rsa_cipher = PKCS1_OAEP.new(private_key)
-    aes_key = rsa_cipher.decrypt(file_date[2])
-    aes_cipher = AES.new(aes_key, AES.MODE_CFB, file_date[1])
-    file_data = aes_cipher.decrypt(file_date[0])
+    file_data = pickle.loads(file_data_pickle)
+    #rsa_cipher = PKCS1_OAEP.new(private_key)
+    #aes_key = rsa_cipher.decrypt(file_date[2])
 
+    aes_cipher = AES.new(session_key_one, AES.MODE_CFB, file_data[0])
+    file_data = aes_cipher.decrypt(file_data[1])
+    file_data = Padding.removePadding(file_data)
     f = open("received_payload.txt", 'wb')
     f.write(file_data)
     f.close()
