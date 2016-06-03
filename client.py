@@ -141,7 +141,7 @@ def initialise(socket):
             signedNonse = private_key.sign(initResponse[RECV_NONCE],
                     private_key)
             confirm_msg = confirm_msg \
-                + (readCertificate('certs/minissl-client.pem'),
+                + (readCertificate(CLIENT_CERT),
                    str(signedNonse[0]))
     p = pickle.dumps(confirm_msg)
 
@@ -149,7 +149,7 @@ def initialise(socket):
     smartSend(socket, p)
     finalMsg = smartRecv(socket)
     if not verifyHash(session_key_two, all_recv_msgs, finalMsg):
-        print 'BAD HASH!'
+        print 'Connection refused!'
         return
 
     print 'Handshake was succesful. Sending GET command...'
