@@ -67,7 +67,6 @@ class Client(threading.Thread):
     def validate_certificate(self, recv_certificate):
         if not keyutils.verify_certificate(self.readCertificate('certs/minissl-ca.pem'
                 ), recv_certificate):
-            print 'Bad Certificate!'
             return 0
         else:
             return 1
@@ -128,6 +127,8 @@ class Client(threading.Thread):
         if reqClientCert:
             if not self.validate_certificate(initResponse[RECV_CERT]):
                 print 'Bad Certificate!'
+                self.client_sock.close()
+                exit()
                 return
 
         # DERIVING PUBLIC KEY FROM CERTIFICATE + PRIVATE KEY#
